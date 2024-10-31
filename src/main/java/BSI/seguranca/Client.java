@@ -1,58 +1,107 @@
 package BSI.seguranca;
 
 import javax.crypto.*;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
-import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Scanner;
 
 public class Client {
 
-    public static void main(String[] args) throws IOException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
-        System.out.print("1 - Novo usuário\n2 - Usuário Cadastrado\nInsira opção: ");
-        Scanner sc = new Scanner(System.in);
+    static String salt;
+    static String seedPassword;
+    public static void main(String[] args) throws IOException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, InvalidKeySpecException {
+        while(true) {
+            System.out.print("1 - Novo usuário\n2 - Usuário Cadastrado\nInsira opção: ");
+            Scanner sc = new Scanner(System.in);
 
-        if(sc.next().equals("1")) {
-            System.out.print("Insira usuário: ");
-            String user = new Scanner(System.in).next();
-            System.out.print("Insira senha semente: ");
-            String seedPassword = new Scanner(System.in).next();
-            System.out.print("Insira sal: ");
-            String salt = new Scanner(System.in).next();
-            System.out.print("Insira senha local: ");
-            String localPassword = new Scanner(System.in).next();
+            if (sc.next().equals("1")) {
+                System.out.print("Insira usuário: ");
+                String user = new Scanner(System.in).next();
+                System.out.print("Insira senha semente: ");
+                String seedPassword = new Scanner(System.in).next();
+                System.out.print("Insira sal: ");
+                String salt = new Scanner(System.in).next();
+                System.out.print("Insira senha local: ");
+                String localPassword = new Scanner(System.in).next();
 
-            saveToFile(user, seedPassword, salt, localPassword);
-        } else {
-            System.out.print("Insira usuário: ");
-            String user = new Scanner(System.in).next();
-            System.out.print("Insira senha local: ");
-            String password = new Scanner(System.in).next();
-
-            if (checkPassword(user, password)) {
-                System.out.println("Entrou");
-
-                Socket clientSocket = new Socket("localhost", 12345);
-                generateFile();
-                PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-
-                String hashIndex = in.readLine();
-                out.println(searchPassword(Integer.parseInt(hashIndex)));
+                saveToFile(user, seedPassword, salt, localPassword);
             } else {
-                System.out.println("Usuário ou senha não encontrados");
+                System.out.print("Insira usuário: ");
+                String user = new Scanner(System.in).next();
+                System.out.print("Insira senha local: ");
+                String password = new Scanner(System.in).next();
+
+                if (checkPassword(user, password)) {
+                    System.out.println("Entrou");
+
+                    Socket clientSocket = new Socket("localhost", 12345);
+                    generateFile();
+                    PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+                    BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+
+                    out.println(user);
+                    String hashIndex = in.readLine();
+                    String hashPassword = searchPassword(Integer.parseInt(hashIndex));
+                    out.println(hashPassword);
+                    System.out.printf("O hash é %s e está no index %s\n", hashPassword, hashIndex);
+                    String resp = in.readLine();
+
+                    if (resp.equals("válido")) {
+                        deleteHash(Integer.parseInt(hashIndex));
+                        System.out.println("Hash utilizada e as seguintes foram deletada do arquivo.");
+                    }
+                } else {
+                    System.out.println("Usuário ou senha não encontrados");
+                }
             }
         }
+    }
+
+    public static boolean checkPassword(String user, String password) throws FileNotFoundException, NoSuchAlgorithmException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+        String currentPath = Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/client/passwords.txt";
+        File file = new File(currentPath);
+        Scanner sc = new Scanner(file);
+
+        while (sc.hasNext()) {
+            String bytes = sc.nextLine();
+            salt = bytes.substring(0, bytes.length() - 24);
+
+            String userData = decrypt(bytes.replaceAll(salt, ""), stringToSecretKey(password, salt));
+            String[] userDataArray = userData.split(" ");
+            if(!userData.isEmpty() && userDataArray[0].equals(user)) {
+                seedPassword = userDataArray[1];
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static void deleteHash(int hashIndex) throws IOException {
+        int i = 0;
+        String currentPath = Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/client/hashes.txt";
+        File file = new File(currentPath);
+        Scanner sc = new Scanner(file);
+        StringBuilder sb = new StringBuilder();
+
+        while(sc.hasNext()) {
+            if(i == hashIndex) break;
+
+            sb.append(sc.next()).append("\n");
+            i++;
+        }
+
+        saveDataToFile(sb.toString());
     }
 
     public static String searchPassword(int hashIndex) throws FileNotFoundException {
@@ -70,50 +119,29 @@ public class Client {
         return password;
     }
 
-    public static String[] loadSalt() throws FileNotFoundException {
-        String currentPath = Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/client/passwords.txt";
-        File file = new File(currentPath);
-        Scanner sc = new Scanner(file);
-
-        String[] password = sc.nextLine().split(" ");
-        String[] pass = new String[2];
-        pass[0] = password[2];
-        pass[1] = password[3];
-
-        return pass;
-    }
-
     public static void generateFile() throws NoSuchAlgorithmException, IOException {
-        String[] passwords = loadSalt();
         String timeSalt = LocalDateTime.now().toString().replaceAll("[-:.T]", "").substring(0, 12);
-        String password = passwords[1].concat(passwords[0]).concat(timeSalt);
+        timeSalt = hash(timeSalt);
+        String hashSalt = hash(salt);
+        String hashPassword = hash(seedPassword);
+        String finalHash = hashPassword.concat(hashSalt).concat(timeSalt);
+        System.out.println(finalHash);
         StringBuilder sb = new StringBuilder();
 
         for (int i = 0; i < 5; i++) {
-            password = hash(password);
-            sb.append(password).append("\n");
+            finalHash = hash(finalHash);
+            sb.append(finalHash).append("\n");
         }
 
-        saveToFileHash(sb.toString());
+        saveDataToFile(sb.toString());
     }
 
-    public static boolean checkPassword(String user, String password) throws FileNotFoundException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException {
-        String currentPath = Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/client/passwords.txt";
-        File file = new File(currentPath);
+    public static SecretKey stringToSecretKey(String password, String salt) throws NoSuchAlgorithmException, InvalidKeySpecException {
+        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt.getBytes(), 65536, 256);
+        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        byte[] keyBytes = factory.generateSecret(spec).getEncoded();
 
-        Scanner myReader = new Scanner(file);
-        SecretKey key = loadKey();
-        while (myReader.hasNextLine()) {
-            String[] data = myReader.nextLine().split(" ");
-            String fileUser = data[0];
-            String filePassword = data[1];
-
-            if(fileUser.equals(user) && decrypt(filePassword, key).equals(password)) {
-                return true;
-            }
-        }
-
-        return false;
+        return new SecretKeySpec(keyBytes, "AES");
     }
 
     public static String hash(String password) throws NoSuchAlgorithmException {
@@ -127,27 +155,12 @@ public class Client {
         return hexString.substring(0,8);
     }
 
-    public static SecretKey loadKey() throws FileNotFoundException {
-        File file = new File(Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/keys.txt");
-        Scanner sc = new Scanner(file);
-
-        byte[] decodedKey = Base64.getDecoder().decode(sc.next());
-
-        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
-    }
-
-    public static SecretKey generateKey() throws NoSuchAlgorithmException {
-        KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-        keyGenerator.init(256);
-        return keyGenerator.generateKey();
-    }
-
-    public static String encrypt(String input, SecretKey key) throws
+    public static String encrypt(String input, String key, String salt) throws
             NoSuchPaddingException, NoSuchAlgorithmException,
-            InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+            InvalidKeyException, BadPaddingException, IllegalBlockSizeException, InvalidKeySpecException {
 
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.ENCRYPT_MODE, key);
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, stringToSecretKey(key, salt));
         byte[] cipherText = cipher.doFinal(input.getBytes());
         return Base64.getEncoder().encodeToString(cipherText);
     }
@@ -156,37 +169,30 @@ public class Client {
             NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException,
             BadPaddingException, IllegalBlockSizeException {
 
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.DECRYPT_MODE, key);
-        byte[] plainText = cipher.doFinal(Base64.getDecoder()
-                .decode(cipherText));
-        return new String(plainText);
+        try {
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+            cipher.init(Cipher.DECRYPT_MODE, key);
+            byte[] plainText = cipher.doFinal(Base64.getDecoder().decode(cipherText));
+            return new String(plainText);
+        } catch(BadPaddingException e) {
+            return "";
+        }
     }
 
-    public static void saveToFile(String user, String seedPassword, String salt, String localPassword) throws NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+    public static void saveToFile(String user, String seedPassword, String salt, String localPassword) throws NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, InvalidKeySpecException {
         String currentPath = Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/client/passwords.txt";
         File file = new File(currentPath);
         if(!file.getParentFile().isFile()) file.getParentFile().mkdirs();
-        SecretKey key = generateKey();
-        byte[] rawData = key.getEncoded();
-        String encodedKey = Base64.getEncoder().encodeToString(rawData);
-        String encryptedPassword = encrypt(localPassword, key);
-        String userData = user.concat(" " + encryptedPassword + " " + salt + " " + seedPassword);
-
-        try (PrintWriter out = new PrintWriter(currentPath)) {
-            out.println(userData);
-        } catch (Exception e) {
-            System.out.println("Arquivo não encontrado!");
-        }
-
-        try (PrintWriter out = new PrintWriter(Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/keys.txt")) {
-            out.println(encodedKey);
+        String userData = user.concat(" " + seedPassword);
+        userData = encrypt(userData, localPassword, salt);
+        try (PrintWriter out = new PrintWriter(new FileOutputStream(currentPath, true))) {
+            out.println(salt + userData);
         } catch (Exception e) {
             System.out.println("Arquivo não encontrado!");
         }
     }
 
-    public static void saveToFileHash(String data) throws IOException {
+    public static void saveDataToFile(String data) {
         String currentPath = Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/client/hashes.txt";
         File file = new File(currentPath);
         file.getParentFile().mkdirs();

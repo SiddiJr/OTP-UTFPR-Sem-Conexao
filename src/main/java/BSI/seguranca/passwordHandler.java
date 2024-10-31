@@ -1,25 +1,20 @@
 package BSI.seguranca;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.SecretKey;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Scanner;
 
 public class passwordHandler implements Runnable {
-    String salt;
-    String seedPassword;
+    public String user;
+    public String hashes;
 
-    public passwordHandler (String seedPassword, String salt) {
-        this.salt = salt;
-        this.seedPassword = seedPassword;
+    public passwordHandler(String user) {
+        this.user = user;
     }
 
     @Override
@@ -29,6 +24,31 @@ public class passwordHandler implements Runnable {
         } catch (NoSuchAlgorithmException | IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public String[] getHashes() throws FileNotFoundException, NoSuchAlgorithmException {
+        String currentPath = Paths.get("").toAbsolutePath() + "\\src\\main\\java\\BSI\\seguranca\\server\\database.txt";
+        File file = new File(currentPath);
+        Scanner sc = new Scanner(file);
+        int i = 0;
+        boolean userFound = false;
+        String data = "";
+
+        while (sc.hasNext() && !userFound) {
+            if(i % 5 == 0) {
+                data = sc.nextLine();
+                if(data.equals(user)) {
+                    userFound = true;
+                }
+            }
+            i++;
+        }
+
+        String[] dataHash = new String[2];
+        dataHash[0] = sc.nextLine();
+        dataHash[1] = sc.nextLine();
+
+        return dataHash;
     }
 
     public String hash(String password) throws NoSuchAlgorithmException {
@@ -59,8 +79,13 @@ public class passwordHandler implements Runnable {
     }
 
     public void generatePassword() throws NoSuchAlgorithmException, IOException {
+        String[] hashes = getHashes();
+        System.out.println(Arrays.toString(hashes));
         String timeSalt = LocalDateTime.now().toString().replaceAll("[-:.T]", "").substring(0, 12);
-        String password = seedPassword.concat(salt).concat(timeSalt);
+        String hashTime = hash(timeSalt);
+        System.out.println(hashTime);
+        String password = hashes[0].concat(hashes[1]).concat(hashTime);
+        System.out.println(password);
         StringBuilder sb = new StringBuilder();
 
         for (int i = 0; i < 5; i++) {
