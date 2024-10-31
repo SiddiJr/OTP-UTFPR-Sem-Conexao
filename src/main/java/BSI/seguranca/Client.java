@@ -43,27 +43,22 @@ public class Client {
 
                 if (checkPassword(user, password)) {
                     System.out.println("Entrou");
-
-                    Socket clientSocket = new Socket("localhost", 12345);
                     generateFile();
-                    PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-                    BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-
-                    out.println(user);
-                    String hashIndex = in.readLine();
-                    String hashPassword = searchPassword(Integer.parseInt(hashIndex));
-                    out.println(hashPassword);
-                    System.out.printf("O hash é %s e está no index %s\n", hashPassword, hashIndex);
-                    String resp = in.readLine();
-
-                    if (resp.equals("válido")) {
-                        deleteHash(Integer.parseInt(hashIndex));
-                        System.out.println("Hash utilizada e as seguintes foram deletada do arquivo.");
-                    }
+                    printHashes();
                 } else {
                     System.out.println("Usuário ou senha não encontrados");
                 }
             }
+        }
+    }
+
+    public static void printHashes() throws FileNotFoundException {
+        String currentPath = Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/client/hashes.txt";
+        File file = new File(currentPath);
+        Scanner sc = new Scanner(file);
+
+        while(sc.hasNext()) {
+            System.out.println(sc.nextLine());
         }
     }
 
@@ -119,13 +114,12 @@ public class Client {
         return password;
     }
 
-    public static void generateFile() throws NoSuchAlgorithmException, IOException {
+    public static void generateFile() throws NoSuchAlgorithmException {
         String timeSalt = LocalDateTime.now().toString().replaceAll("[-:.T]", "").substring(0, 12);
         timeSalt = hash(timeSalt);
         String hashSalt = hash(salt);
         String hashPassword = hash(seedPassword);
         String finalHash = hashPassword.concat(hashSalt).concat(timeSalt);
-        System.out.println(finalHash);
         StringBuilder sb = new StringBuilder();
 
         for (int i = 0; i < 5; i++) {

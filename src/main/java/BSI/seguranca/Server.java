@@ -10,57 +10,53 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Scanner;
 
 public class Server {
-    public static void main(String[] args) throws IOException, NoSuchAlgorithmException {
+    public static void main(String[] args) throws IOException, NoSuchAlgorithmException, InterruptedException {
         System.out.println("1 - adicionar usuário\n2 - pedir hash");
         System.out.print("Entre a opção: ");
         Scanner scOption = new Scanner(System.in);
         String option = scOption.next();
 
-        while(option.equals("1")) {
-            System.out.print("Entre o nome: ");
-            Scanner scUser = new Scanner(System.in);
-            String user = scUser.next();
+        while(true) {
 
-            System.out.print("Entre senha semente: ");
-            Scanner scPassword = new Scanner(System.in);
-            String password = scPassword.next();
+            if(option.equals("1")) {
+                System.out.print("Entre o nome: ");
+                Scanner scUser = new Scanner(System.in);
+                String user = scUser.next();
 
-            System.out.print("Entre sal: ");
-            Scanner scSalt = new Scanner(System.in);
-            String salt = scSalt.next();
+                System.out.print("Entre senha semente: ");
+                Scanner scPassword = new Scanner(System.in);
+                String password = scPassword.next();
 
-            saveData(user, hash(password), hash(salt));
+                System.out.print("Entre sal: ");
+                Scanner scSalt = new Scanner(System.in);
+                String salt = scSalt.next();
 
-            System.out.println("1 - adicionar usuário\n2 - pedir hash");
+                saveData(user, hash(password), hash(salt));
+
+                System.out.println("1 - adicionar usuário\n2 - pedir hash");
+            } else {
+                System.out.print("Entre qual usuário deseja: ");
+                Scanner scUser = new Scanner(System.in);
+                String clientUser = scUser.next();
+
+                passwordHandler ph = new passwordHandler(clientUser);
+                Thread thread = new Thread(ph);
+                thread.start();
+                System.out.print("Entre qual hash deseja: ");
+                Scanner scIndex = new Scanner(System.in);
+                String hashIndex = scIndex.next();
+
+                if(searchPassword(hashIndex)) {
+                    System.out.println("chave válida");
+                    deleteHash(hashIndex);
+                } else {
+                    System.out.println("chave inválida");
+                }
+            }
+
             System.out.print("Entre a opção: ");
             scOption = new Scanner(System.in);
             option = scOption.next();
-        }
-
-        ServerSocket serverSocket = new ServerSocket(12345);
-        Socket clientSocket = serverSocket.accept();
-        System.out.println("cliente aceito" + clientSocket.getInetAddress().toString());
-        PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-        BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-        String clientUser = in.readLine();
-
-        passwordHandler ph = new passwordHandler(clientUser);
-        Thread thread = new Thread(ph);
-        thread.start();
-        System.out.print("Entre qual hash deseja: ");
-        Scanner scIndex = new Scanner(System.in);
-        String hashIndex = scIndex.next();
-
-        out.println(hashIndex);
-        String hashPassword = in.readLine();
-        if(hashPassword.equals(searchPassword(Integer.parseInt(hashIndex), clientUser))) {
-            System.out.printf("O hash é %s e está no index %s\n", hashPassword, hashIndex);
-            System.out.println("Chave válida.");
-            out.println("válido");
-            deleteHash(Integer.parseInt(hashIndex));
-        } else {
-            System.out.printf("O hash é %s e está no index %s\n", hashPassword, hashIndex);
-            System.out.println("Chave inválida.");
         }
     }
 
@@ -90,36 +86,35 @@ public class Server {
         }
     }
 
-    public static void deleteHash(int hashIndex) throws IOException {
-        int i = 0;
+    public static void deleteHash(String hashValue) throws IOException {
         String currentPath = Paths.get("").toAbsolutePath() + "/src/main/java/BSI/seguranca/server/hashes.txt";
         File file = new File(currentPath);
         Scanner sc = new Scanner(file);
         StringBuilder sb = new StringBuilder();
 
         while(sc.hasNext()) {
-            if(i == hashIndex) break;
+            String line = sc.nextLine();
 
-            sb.append(sc.next()).append('\n');
-            i++;
+            if(line.equals(hashValue)) break;
+
+            sb.append(line).append('\n');
         }
 
         saveDataToFile(sb.toString());
     }
 
-    public static String searchPassword(int hashIndex, String user) throws FileNotFoundException {
+    public static boolean searchPassword(String hash) throws FileNotFoundException {
         String currentPath = Paths.get("").toAbsolutePath() + "\\src\\main\\java\\BSI\\seguranca\\server\\hashes.txt";
-        int i = 0;
         File file = new File(currentPath);
         Scanner sc = new Scanner(file);
-        String password = "";
 
-        while(i < hashIndex) {
-            password = sc.next();
-            i++;
+        while(sc.hasNext()) {
+            if(sc.nextLine().equals(hash)) {
+                return true;
+            }
         }
 
-        return password;
+        return false;
     }
 
     public static void saveDataToFile(String data) {

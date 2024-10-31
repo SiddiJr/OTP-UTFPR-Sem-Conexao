@@ -11,7 +11,6 @@ import java.util.Scanner;
 
 public class passwordHandler implements Runnable {
     public String user;
-    public String hashes;
 
     public passwordHandler(String user) {
         this.user = user;
@@ -80,12 +79,9 @@ public class passwordHandler implements Runnable {
 
     public void generatePassword() throws NoSuchAlgorithmException, IOException {
         String[] hashes = getHashes();
-        System.out.println(Arrays.toString(hashes));
         String timeSalt = LocalDateTime.now().toString().replaceAll("[-:.T]", "").substring(0, 12);
         String hashTime = hash(timeSalt);
-        System.out.println(hashTime);
         String password = hashes[0].concat(hashes[1]).concat(hashTime);
-        System.out.println(password);
         StringBuilder sb = new StringBuilder();
 
         for (int i = 0; i < 5; i++) {
